@@ -2,7 +2,7 @@
 
 SentinelAI is a security operations dashboard for analyzing security logs and investigating potential incidents.
 
-The project uses a multi-stage AI pipeline to process raw log data, classify potential threats, correlate related events, and generate an incident report with remediation steps.
+It uses a multi-stage AI pipeline to parse raw logs, identify potential threats, correlate related events, and generate an incident report with remediation steps.
 
 ## Features
 
