@@ -1,90 +1,246 @@
 # SentinelAI — Agentic SOC Copilot
 
-An autonomous security-operations dashboard. You upload or stream logs; a chain of
-Claude-powered agents parses them, classifies threats against MITRE ATT&CK, correlates
-related events into an incident timeline, and drafts a remediation report — the work a
-junior SOC analyst does by hand, done in seconds.
+SentinelAI is a security operations dashboard for analyzing security logs and investigating potential incidents.
 
-Built to show four things at once on a resume/GitHub: **full-stack engineering**,
-**agentic AI orchestration**, **applied cybersecurity**, and **secure backend design**
-(RLS, multi-tenant isolation, server-side secrets).
+The project uses a multi-stage AI pipeline to process raw log data, classify potential threats, correlate related events, and generate an incident report with remediation steps.
+
+## Features
+
+* Upload or paste security logs for analysis
+* Parse raw log data into structured events
+* Classify potential security threats
+* Map detected activity to MITRE ATT&CK techniques
+* Correlate related events into an incident timeline
+* Generate incident reports and remediation suggestions
+* Store incidents, logs, timelines, and agent outputs
+* Multi-tenant data isolation using PostgreSQL Row Level Security
+* Authentication through Supabase
+* Server-side handling of the Anthropic API key
 
 ## Architecture
 
-```
-React + Tailwind (frontend)
-      │
-      ▼
-Supabase (Postgres + Auth + Realtime + Storage)
-      │
-      ▼
-Supabase Edge Function: agent-pipeline (Deno)
-      │  4-stage Claude agent chain:
-      │  1. Log Parser        → structured events from raw text
-      │  2. Threat Classifier → severity + MITRE ATT&CK tagging
-      │  3. Investigator      → correlates events into a timeline
-      │  4. Report Writer     → markdown incident report + remediation steps
-      ▼
-Anthropic API (claude-sonnet-4-6)
+```text
+React + Tailwind
+       │
+       ▼
+Supabase
+(Postgres + Auth + Realtime + Storage)
+       │
+       ▼
+Supabase Edge Function
+      agent-pipeline
+       │
+       ├── 1. Log Parser
+       │      ↓
+       │   Structured events
+       │
+       ├── 2. Threat Classifier
+       │      ↓
+       │   Severity + MITRE ATT&CK
+       │
+       ├── 3. Investigator
+       │      ↓
+       │   Correlated incident timeline
+       │
+       └── 4. Report Writer
+              ↓
+          Incident report + remediation
+       │
+       ▼
+Anthropic API
 ```
 
-The Anthropic API key lives only in the Supabase Edge Function's server-side secrets —
-never shipped to the browser. This is the correct pattern for any project that calls an
-LLM from a public frontend, and it's worth mentioning in an interview.
+The pipeline uses four stages. Each stage produces structured output that is passed to the next stage.
+
+## Technology Stack
+
+### Frontend
+
+* React
+* Vite
+* Tailwind CSS
+
+### Backend
+
+* Supabase
+* PostgreSQL
+* Supabase Authentication
+* Supabase Edge Functions
+* Realtime
+* Storage
+
+### AI
+
+* Anthropic API
+* Claude
+
+### Security
+
+* PostgreSQL Row Level Security (RLS)
+* Multi-tenant organization isolation
+* Server-side API secrets
+
+## Database
+
+The main database tables are:
+
+| Table               | Purpose                                    |
+| ------------------- | ------------------------------------------ |
+| `organizations`     | Stores organization/tenant information     |
+| `profiles`          | Stores authenticated user profiles         |
+| `log_sources`       | Stores sources of security logs            |
+| `raw_logs`          | Stores uploaded or pasted raw logs         |
+| `incidents`         | Stores detected security incidents         |
+| `incident_timeline` | Stores events associated with incidents    |
+| `agent_reports`     | Stores the output from each analysis stage |
+
+The tables use Row Level Security policies based on the user's organization.
+
+## Project Structure
+
+```text
+SentinelAI/
+├── src/
+│   ├── components/
+│   ├── context/
+│   ├── lib/
+│   ├── pages/
+│   ├── App.jsx
+│   ├── index.css
+│   └── main.jsx
+│
+├── supabase/
+│   ├── functions/
+│   │   └── agent-pipeline/
+│   │       └── index.ts
+│   └── migrations/
+│       └── 0001_init.sql
+│
+├── .env.example
+├── .gitignore
+├── index.html
+├── package.json
+├── postcss.config.js
+├── tailwind.config.js
+└── vite.config.js
+```
 
 ## Setup
 
-### 1. Supabase project
-1. Create a project at supabase.com.
-2. In the SQL editor, run `supabase/migrations/0001_init.sql`.
-3. In Project Settings → API, copy your Project URL and anon/publishable key.
+### 1. Install dependencies
 
-### 2. Edge Function (agent pipeline)
 ```bash
-supabase functions deploy agent-pipeline
-supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+npm install
 ```
 
-### 3. Frontend
+### 2. Configure Supabase
+
+Create a Supabase project and run:
+
+```text
+supabase/migrations/0001_init.sql
+```
+
+in the Supabase SQL Editor.
+
+Then obtain the project URL and anon/publishable key from the Supabase project settings.
+
+Create a `.env` file based on `.env.example`:
+
+```env
+VITE_SUPABASE_URL=your-project-url
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### 3. Configure the Edge Function
+
+Deploy the `agent-pipeline` Edge Function using the Supabase CLI:
+
 ```bash
-cp .env.example .env
-# fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
-npm install
+supabase functions deploy agent-pipeline
+```
+
+The Anthropic API key should be stored as a server-side Supabase secret:
+
+```bash
+supabase secrets set ANTHROPIC_API_KEY=your-api-key
+```
+
+The API key should not be placed in the frontend code or committed to GitHub.
+
+### 4. Run locally
+
+```bash
 npm run dev
 ```
 
-### 4. Deploy
-- Frontend: push to GitHub → import into Vercel (auto-detects Vite) → add the two env
-  vars in Vercel's dashboard.
-- Backend: already live on Supabase once the migration + function are deployed.
+The Vite development server will provide the local address in the terminal.
 
-## Database model
+## Deployment
 
-| Table | Purpose |
-|---|---|
-| `organizations` | Tenant boundary — every other table hangs off `org_id` |
-| `profiles` | One row per authenticated user, linked to an org |
-| `log_sources` | Named origins of logs (e.g. "prod-nginx", "auth-service") |
-| `raw_logs` | Uploaded/pasted raw log text awaiting analysis |
-| `incidents` | One row per detected/classified security incident |
-| `incident_timeline` | Correlated events belonging to an incident |
-| `agent_reports` | Full output of each agent stage, kept for audit/history |
+### Frontend
 
-All tables are protected by Row Level Security scoped to the caller's `org_id`, so one
-organization's data is never visible to another — verified by policy, not just app code.
+The frontend can be deployed by connecting the GitHub repository to Vercel.
 
-## Why this project (for interviewers)
+After importing the project, configure:
 
-- **Agentic AI**: not a single prompt — a supervised multi-step agent chain where each
-  stage's output is validated JSON feeding the next stage.
-- **Cybersecurity**: MITRE ATT&CK-aligned classification, incident timelines, audit trail.
-- **Full-stack**: React frontend, Postgres schema design, RLS policy design, serverless
-  backend, realtime updates.
-- **Production hygiene**: secrets never touch the client, multi-tenant isolation enforced
-  at the database layer, migrations checked into version control.
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
 
-## Extending it further
-- Swap manual log paste for a real ingestion endpoint (webhook from a SIEM/CloudWatch).
-- Add a `tool_use` step where the Investigator agent can query the database itself.
-- Add Slack/email notification on high-severity incidents.
-- Add a feedback loop: analyst marks a classification wrong → fine-tune the prompt.
+as environment variables in Vercel.
+
+### Backend
+
+The backend consists of the Supabase database, migration, authentication, and Edge Function.
+
+The Edge Function must be deployed separately through Supabase.
+
+## Security Considerations
+
+SentinelAI keeps the Anthropic API key on the server side rather than exposing it to the browser.
+
+Database access is protected using PostgreSQL Row Level Security policies so that data is scoped to the user's organization.
+
+Never commit a `.env` file or private API keys to the repository.
+
+## Current Workflow
+
+```text
+User
+ │
+ ▼
+Upload / paste security logs
+ │
+ ▼
+Log Parser
+ │
+ ▼
+Threat Classifier
+ │
+ ▼
+Investigator
+ │
+ ▼
+Incident Timeline
+ │
+ ▼
+Report Writer
+ │
+ ▼
+Incident Report
+```
+
+## Possible Future Improvements
+
+* Add real log ingestion from SIEM or cloud services
+* Add webhook-based ingestion
+* Allow the Investigator stage to query additional database information
+* Add notifications for high-severity incidents
+* Add analyst feedback for incorrect classifications
+* Improve automated testing and validation of AI-generated results
+
+## License
+
+This project is currently provided for educational and portfolio purposes.
