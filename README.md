@@ -6,7 +6,7 @@ It uses a multi-stage AI pipeline to parse raw logs, identify potential threats,
 
 ## Features
 
-* Upload or paste security logs for analysis
+* Paste security logs for analysis
 * Parse raw log data into structured events
 * Classify potential security threats
 * Map detected activity to MITRE ATT&CK techniques
@@ -24,7 +24,7 @@ React + Tailwind
        │
        ▼
 Supabase
-(Postgres + Auth + Realtime + Storage)
+(Postgres + Auth + Realtime)
        │
        ▼
 Supabase Edge Function
