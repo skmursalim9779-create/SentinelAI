@@ -1,30 +1,36 @@
 import { useState } from 'react'
-import { ArrowRight, ArrowLeft } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { ArrowRight, ArrowLeft, CheckCircle2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../context/AuthContext.jsx'
 import CyberBackground from '../components/CyberBackground.jsx'
 
 export default function ForgotPassword() {
   const { sendPasswordReset } = useAuth()
-  const navigate = useNavigate()
 
   const [email, setEmail] = useState('')
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
+  const [error, setError] = useState('')
 
   async function handleSubmit(e) {
     e.preventDefault()
 
     setError('')
+    setSent(false)
+
+    if (!email.trim()) {
+      setError('Please enter your email address.')
+      return
+    }
+
     setLoading(true)
 
     try {
-      const { error } = await sendPasswordReset(email)
+      const { error: resetError } = await sendPasswordReset(email.trim())
 
-      if (error) {
-        setError(error.message)
+      if (resetError) {
+        setError(resetError.message)
         setLoading(false)
         return
       }
@@ -33,12 +39,12 @@ export default function ForgotPassword() {
       setSent(true)
     } catch (err) {
       setLoading(false)
-      setError(err.message || 'Failed to send reset email')
+      setError(err.message || 'Failed to send password reset email.')
     }
   }
 
   return (
-    <div className="min-h-screen w-screen flex items-center justify-center bg-ink-950 px-4 py-8 relative overflow-x-hidden">
+    <div className="min-h-screen w-screen flex items-center justify-center bg-ink-950 px-4 py-8 relative overflow-hidden">
       <CyberBackground />
 
       <motion.div
@@ -77,7 +83,7 @@ export default function ForgotPassword() {
                   Forgot password?
                 </h2>
 
-                <p className="text-xs text-ink-400 mt-1">
+                <p className="text-xs text-ink-400 mt-1 leading-relaxed">
                   Enter your registered email address and we'll send you a
                   password reset link.
                 </p>
@@ -94,8 +100,8 @@ export default function ForgotPassword() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-ink-800/90 border border-ink-650 text-ink-100 text-sm focus:border-signal focus:ring-1 focus:ring-signal/30 outline-none transition-all placeholder:text-ink-500"
                     placeholder="analyst@sentinel.ai"
+                    className="w-full px-3 py-2 rounded-lg bg-ink-800/90 border border-ink-650 text-ink-100 text-sm focus:border-signal focus:ring-1 focus:ring-signal/30 outline-none transition-all placeholder:text-ink-500"
                   />
                 </div>
 
@@ -114,7 +120,9 @@ export default function ForgotPassword() {
                   )}
                 </AnimatePresence>
 
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
                   type="submit"
                   disabled={loading}
                   className="w-full py-2.5 rounded-lg bg-signal text-ink-950 font-semibold text-sm hover:bg-signal-glow transition-all shadow-glow disabled:opacity-50 flex items-center justify-center gap-2"
@@ -122,7 +130,7 @@ export default function ForgotPassword() {
                   {loading ? (
                     <>
                       <span className="w-4 h-4 rounded-full border-2 border-ink-950 border-t-transparent animate-spin" />
-                      Sending link...
+                      Sending reset email...
                     </>
                   ) : (
                     <>
@@ -130,27 +138,48 @@ export default function ForgotPassword() {
                       <ArrowRight size={15} />
                     </>
                   )}
-                </button>
+                </motion.button>
               </form>
             </>
           ) : (
-            <div className="text-center">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center"
+            >
+              <CheckCircle2
+                size={32}
+                className="text-threat-low mx-auto mb-4"
+              />
+
               <h2 className="text-lg font-display font-semibold text-ink-100">
                 Check your email
               </h2>
 
-              <p className="text-sm text-ink-400 mt-3 leading-relaxed">
+              <p className="text-xs text-ink-400 mt-2 leading-relaxed">
                 We sent a password reset link to:
               </p>
 
-              <p className="text-sm text-ink-100 font-mono mt-2 break-all">
+              <p className="text-sm text-ink-200 font-mono mt-2 break-all">
                 {email}
               </p>
 
-              <p className="text-xs text-ink-500 mt-4">
-                Open the email and click the reset link.
+              <p className="text-xs text-ink-400 mt-4 leading-relaxed">
+                Open the email and click the reset link to create a new
+                password.
               </p>
-            </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSent(false)
+                  setError('')
+                }}
+                className="mt-5 text-xs text-signal hover:text-signal-glow font-mono transition-colors"
+              >
+                Send again
+              </button>
+            </motion.div>
           )}
 
           <div className="mt-5 pt-4 border-t border-ink-800 flex justify-center">
