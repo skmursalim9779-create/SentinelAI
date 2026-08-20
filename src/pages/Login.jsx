@@ -52,17 +52,31 @@ export default function Login() {
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+    setSuccessMessage('')
     setLoading(true)
 
-    const { error: err } = await signIn(email, password)
+    const { data, error: err } = await signIn(email, password)
 
     setLoading(false)
 
     if (err) {
       setError(err.message)
-    } else {
-      navigate('/')
+      return
     }
+
+    // Block unverified email/password users
+    const user = data?.user
+    if (
+      user &&
+      !user.email_confirmed_at &&
+      user.app_metadata?.provider === 'email'
+    ) {
+      await supabase.auth.signOut()
+      setError('Please verify your email address before signing in.')
+      return
+    }
+
+    navigate('/')
   }
 
   async function handleGoogleSignIn() {

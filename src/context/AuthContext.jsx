@@ -3,6 +3,23 @@ import { supabase } from '../lib/supabaseClient'
 
 const AuthContext = createContext(null)
 
+const getAuthRedirectUrl = (path = '/') => {
+  const baseUrl = window.location.origin
+  return `${baseUrl}${path}`
+}
+
+// ─────────────────────────────────────────────────────────────
+// HELPER: detect unverified email/password users
+// Google OAuth users are ALWAYS exempt (their emails are
+// already verified by Google).
+// ─────────────────────────────────────────────────────────────
+const isUnverifiedEmailUser = (user) => {
+  if (!user) return false
+  const provider = user.app_metadata?.provider
+  if (provider !== 'email') return false // Google, etc. — always OK
+  return !user.email_confirmed_at
+}
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -27,9 +44,18 @@ export function AuthProvider({ children }) {
           console.error('Failed to load session:', error)
         }
 
+        // GUARD: block unverified email/password sessions
+        if (session && isUnverifiedEmailUser(session.user)) {
+          await supabase.auth.signOut()
+          setSession(null)
+          setLoading(false)
+          return
+        }
+
         setSession(session)
       } catch (error) {
         console.error('Session initialization failed:', error)
+
         if (mounted) {
           setSession(null)
         }
@@ -44,8 +70,16 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!mounted) return
+
+      // GUARD: block unverified email/password sessions
+      if (session && isUnverifiedEmailUser(session.user)) {
+        await supabase.auth.signOut()
+        setSession(null)
+        setLoading(false)
+        return
+      }
 
       setSession(session)
       setLoading(false)
@@ -102,6 +136,7 @@ export function AuthProvider({ children }) {
         setProfile(data ? { ...defaultProfile, ...data } : defaultProfile)
       } catch (err) {
         if (!mounted) return
+
         setProfile({
           id: session.user.id,
           email: session.user.email,
@@ -134,6 +169,7 @@ export function AuthProvider({ children }) {
           full_name: fullName,
           org_name: orgName,
         },
+        emailRedirectTo: getAuthRedirectUrl('/login'),
       },
     })
   }
@@ -150,6 +186,7 @@ export function AuthProvider({ children }) {
 
   // ─────────────────────────────────────────────────────────────
   // GOOGLE SIGN IN
+  // DO NOT CHANGE THIS FLOW
   // ─────────────────────────────────────────────────────────────
   const signInWithGoogle = async () => {
     return await supabase.auth.signInWithOAuth({
@@ -165,11 +202,11 @@ export function AuthProvider({ children }) {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // PASSWORD RESET — EMAIL LINK
+  // PASSWORD RESET — LINK BASED
   // ─────────────────────────────────────────────────────────────
   const sendPasswordReset = async (email) => {
     return await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: getAuthRedirectUrl('/reset-password'),
     })
   }
 

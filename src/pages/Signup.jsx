@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Eye, EyeOff, Shield, ArrowRight, HelpCircle, CheckCircle2, Sparkles } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Eye, EyeOff, ArrowRight, HelpCircle, CheckCircle2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -11,7 +11,6 @@ import GoogleOAuthModal from '../components/GoogleOAuthModal.jsx'
 
 export default function Signup() {
   const { session, signUp, signInWithGoogle } = useAuth()
-  const navigate = useNavigate()
 
   const [fullName, setFullName] = useState('')
   const [orgName, setOrgName] = useState('')
@@ -25,78 +24,119 @@ export default function Signup() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
-  const [done, setDone] = useState(false)
   const [showOAuthModal, setShowOAuthModal] = useState(false)
 
-  // Redirect if already logged in or after OAuth callback
-  useEffect(() => {
-    if (session) {
-      navigate('/', { replace: true })
-    }
-  }, [session, navigate])
+  // form → check-email → done
+  const [step, setStep] = useState('form')
 
-  // Parse OAuth redirect errors from URL hash or query params
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (session && step === 'done') {
+      window.location.replace('/')
+    }
+  }, [session, step])
+
+  // Handle OAuth errors
   useEffect(() => {
     const hash = window.location.hash
     const params = new URLSearchParams(window.location.search)
-    let errDesc = params.get('error_description') || params.get('error')
+
+    let errDesc =
+      params.get('error_description') ||
+      params.get('error')
 
     if (!errDesc && hash) {
       const hashParams = new URLSearchParams(hash.substring(1))
-      errDesc = hashParams.get('error_description') || hashParams.get('error')
+      errDesc =
+        hashParams.get('error_description') ||
+        hashParams.get('error')
     }
 
     if (errDesc) {
-      const decodedErr = decodeURIComponent(errDesc.replace(/\+/g, ' '))
+      const decodedErr = decodeURIComponent(
+        errDesc.replace(/\+/g, ' ')
+      )
+
       setError(decodedErr)
-      if (decodedErr.toLowerCase().includes('provider') || decodedErr.toLowerCase().includes('unsupported')) {
+
+      if (
+        decodedErr.toLowerCase().includes('provider') ||
+        decodedErr.toLowerCase().includes('unsupported')
+      ) {
         setShowOAuthModal(true)
       }
     }
   }, [])
 
+  // ─────────────────────────────────────────────────────────────
+  // EMAIL/PASSWORD SIGNUP
+  // ─────────────────────────────────────────────────────────────
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
 
+    if (!fullName.trim()) {
+      setError('Please enter your full name.')
+      return
+    }
+
+    if (!orgName.trim()) {
+      setError('Please enter your organization.')
+      return
+    }
+
     if (password !== confirmPassword) {
-      setError('Passwords do not match')
+      setError('Passwords do not match.')
       return
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters')
+      setError('Password must be at least 6 characters.')
       return
     }
 
     setLoading(true)
 
-    const { error: err } = await signUp(
-      email,
-      password,
-      fullName,
-      orgName
-    )
+    try {
+      const { data, error: signupError } = await signUp(
+        email.trim(),
+        password,
+        fullName.trim(),
+        orgName.trim()
+      )
 
-    setLoading(false)
-
-    if (err) {
-      setError(err.message)
-    } else {
-      setDone(true)
-      try {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#FF7A3D', '#4A9BFF', '#4ADE80', '#FFA36C']
-        })
-      } catch {
-        // Confetti fallback
+      if (signupError) {
+        setError(signupError.message)
+        setLoading(false)
+        return
       }
+
+      setLoading(false)
+
+      /*
+       * With Supabase email confirmation enabled:
+       * - a confirmation email is sent
+       * - the user must click the link before they can sign in
+       * - the link redirects to /login
+       *
+       * If Supabase returns an auto-created session, sign it out
+       * immediately — the user must verify their email first.
+       */
+      if (data?.session) {
+        await supabase.auth.signOut()
+      }
+
+      setStep('check-email')
+    } catch (err) {
+      setLoading(false)
+      setError(err.message || 'Failed to create your account.')
     }
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // GOOGLE
+  // DO NOT CHANGE THIS FLOW
+  // ─────────────────────────────────────────────────────────────
   async function handleGoogleSignUp() {
     setError('')
     setGoogleLoading(true)
@@ -110,16 +150,86 @@ export default function Signup() {
         setShowOAuthModal(true)
       }
     } catch (err) {
-      setError(err.message || 'Failed to connect to Google OAuth')
+      setError(
+        err.message || 'Failed to connect to Google OAuth'
+      )
       setGoogleLoading(false)
       setShowOAuthModal(true)
     }
   }
 
-  if (done) {
+  // ─────────────────────────────────────────────────────────────
+  // CHECK EMAIL SCREEN
+  // ─────────────────────────────────────────────────────────────
+  if (step === 'check-email') {
     return (
       <div className="min-h-screen w-screen flex items-center justify-center bg-ink-950 px-4 relative overflow-hidden">
         <CyberBackground />
+
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="text-center max-w-sm w-full p-8 rounded-2xl bg-ink-900/90 backdrop-blur-xl border border-ink-700 shadow-2xl relative z-10"
+        >
+          <div className="w-14 h-14 rounded-2xl bg-signal/10 border border-signal/30 text-signal flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 size={28} />
+          </div>
+
+          <p className="text-signal text-xs font-mono uppercase tracking-widest mb-2">
+            Check your email
+          </p>
+
+          <h2 className="text-xl font-display font-semibold text-ink-100 mb-3">
+            Verify your email address
+          </h2>
+
+          <p className="text-sm text-ink-400 leading-relaxed">
+            We sent a verification link to:
+          </p>
+
+          <p className="text-sm text-ink-200 font-mono mt-2 break-all">
+            {email}
+          </p>
+
+          <p className="text-xs text-ink-500 mt-4 leading-relaxed">
+            Open the email and click the verification link to finish
+            creating your SentinelAI account.
+          </p>
+
+          <div className="mt-6 flex flex-col gap-3">
+            <Link
+              to="/login"
+              className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-lg bg-signal text-ink-950 font-medium text-sm hover:bg-signal-glow transition-all duration-200 shadow-glow"
+            >
+              <span>Go to Sign In</span>
+              <ArrowRight size={16} />
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => {
+                setStep('form')
+                setError('')
+              }}
+              className="text-xs text-ink-400 hover:text-ink-100 transition-colors font-mono"
+            >
+              Use a different email
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    )
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // SUCCESS SCREEN
+  // ─────────────────────────────────────────────────────────────
+  if (step === 'done') {
+    return (
+      <div className="min-h-screen w-screen flex items-center justify-center bg-ink-950 px-4 relative overflow-hidden">
+        <CyberBackground />
+
         <motion.div
           initial={{ opacity: 0, scale: 0.92 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -131,22 +241,22 @@ export default function Signup() {
           </div>
 
           <p className="text-signal text-xs font-mono uppercase tracking-widest mb-1">
-            ✓ Account Created Successfully
+            ✓ Account Ready
           </p>
 
           <h2 className="text-xl font-display font-semibold text-ink-100 mb-2">
-            Check your inbox
+            Account created!
           </h2>
 
           <p className="text-sm text-ink-400 mb-6">
-            We sent a confirmation link to <span className="text-ink-200 font-mono">{email}</span>. Confirm your email, then sign in.
+            Your account is ready. You can now sign in.
           </p>
 
           <Link
             to="/login"
             className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-lg bg-signal text-ink-950 font-medium text-sm hover:bg-signal-glow transition-all duration-200 shadow-glow"
           >
-            <span>Go to sign in</span>
+            <span>Go to Sign In</span>
             <ArrowRight size={16} />
           </Link>
         </motion.div>
@@ -154,6 +264,9 @@ export default function Signup() {
     )
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // SIGNUP FORM
+  // ─────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen w-screen flex items-center justify-center bg-ink-950 px-4 py-8 relative overflow-x-hidden">
       <CyberBackground />
@@ -171,34 +284,41 @@ export default function Signup() {
               <span className="w-3 h-3 rounded-full bg-signal shadow-glow" />
               <span className="w-3 h-3 rounded-full bg-signal absolute animate-ping opacity-60" />
             </div>
+
             <h1 className="text-2xl font-display font-bold tracking-tight text-ink-100">
               SentinelAI
             </h1>
           </div>
-          <p className="text-xs font-mono text-ink-400">Next-gen agentic SOC & incident copilot</p>
+
+          <p className="text-xs font-mono text-ink-400">
+            Next-gen agentic SOC & incident copilot
+          </p>
         </div>
 
-        {/* Signup Container Card */}
         <motion.div
           layout
           className="p-7 rounded-2xl border border-ink-700/80 bg-ink-900/90 backdrop-blur-xl shadow-2xl relative overflow-hidden"
         >
-          {/* Subtle Top Accent */}
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-signal to-transparent opacity-80" />
 
           <div className="mb-5">
-            <h2 className="text-lg font-display font-semibold text-ink-100">Create your account</h2>
-            <p className="text-xs text-ink-400 mt-0.5">Start monitoring threats with autonomous AI agents</p>
+            <h2 className="text-lg font-display font-semibold text-ink-100">
+              Create your account
+            </h2>
+
+            <p className="text-xs text-ink-400 mt-0.5">
+              Start monitoring threats with autonomous AI agents
+            </p>
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Full Name & Organization in 2 cols */}
+            {/* Full Name + Organization */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-[11px] font-mono text-ink-400 uppercase tracking-wider block mb-1">
                   Full name
                 </label>
+
                 <input
                   type="text"
                   required
@@ -213,6 +333,7 @@ export default function Signup() {
                 <label className="text-[11px] font-mono text-ink-400 uppercase tracking-wider block mb-1">
                   Organization
                 </label>
+
                 <input
                   type="text"
                   required
@@ -229,6 +350,7 @@ export default function Signup() {
               <label className="text-[11px] font-mono text-ink-400 uppercase tracking-wider block mb-1">
                 Work email
               </label>
+
               <input
                 type="email"
                 required
@@ -245,6 +367,7 @@ export default function Signup() {
                 <label className="text-[11px] font-mono text-ink-400 uppercase tracking-wider block mb-1">
                   Password
                 </label>
+
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
@@ -255,13 +378,22 @@ export default function Signup() {
                     className="w-full px-3 py-2 pr-9 rounded-lg bg-ink-800/90 border border-ink-650 text-ink-100 text-sm focus:border-signal focus:ring-1 focus:ring-signal/30 outline-none transition-all placeholder:text-ink-500"
                     placeholder="••••••••"
                   />
+
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-200 transition-colors p-0.5"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-label={
+                      showPassword
+                        ? 'Hide password'
+                        : 'Show password'
+                    }
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showPassword ? (
+                      <EyeOff size={16} />
+                    ) : (
+                      <Eye size={16} />
+                    )}
                   </button>
                 </div>
               </div>
@@ -270,9 +402,12 @@ export default function Signup() {
                 <label className="text-[11px] font-mono text-ink-400 uppercase tracking-wider block mb-1">
                   Confirm password
                 </label>
+
                 <div className="relative">
                   <input
-                    type={showConfirmPassword ? 'text' : 'password'}
+                    type={
+                      showConfirmPassword ? 'text' : 'password'
+                    }
                     required
                     minLength={6}
                     value={confirmPassword}
@@ -280,19 +415,30 @@ export default function Signup() {
                     className="w-full px-3 py-2 pr-9 rounded-lg bg-ink-800/90 border border-ink-650 text-ink-100 text-sm focus:border-signal focus:ring-1 focus:ring-signal/30 outline-none transition-all placeholder:text-ink-500"
                     placeholder="••••••••"
                   />
+
                   <button
                     type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    onClick={() =>
+                      setShowConfirmPassword(!showConfirmPassword)
+                    }
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-200 transition-colors p-0.5"
-                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    aria-label={
+                      showConfirmPassword
+                        ? 'Hide password'
+                        : 'Show password'
+                    }
                   >
-                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showConfirmPassword ? (
+                      <EyeOff size={16} />
+                    ) : (
+                      <Eye size={16} />
+                    )}
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Error Message with Help Trigger */}
+            {/* Error */}
             <AnimatePresence>
               {error && (
                 <motion.div
@@ -304,20 +450,24 @@ export default function Signup() {
                   <p className="text-threat-critical font-mono flex-1 leading-relaxed">
                     {error}
                   </p>
-                  {(error.toLowerCase().includes('provider') || error.toLowerCase().includes('google') || error.toLowerCase().includes('oauth')) && (
+
+                  {(error.toLowerCase().includes('provider') ||
+                    error.toLowerCase().includes('google') ||
+                    error.toLowerCase().includes('oauth')) && (
                     <button
                       type="button"
                       onClick={() => setShowOAuthModal(true)}
                       className="text-signal hover:text-signal-glow font-mono underline shrink-0 flex items-center gap-1 text-[11px]"
                     >
-                      <HelpCircle size={13} /> Fix Guide
+                      <HelpCircle size={13} />
+                      Fix Guide
                     </button>
                   )}
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Create Account Button */}
+            {/* Create Account */}
             <motion.button
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
@@ -341,15 +491,20 @@ export default function Signup() {
             {/* Divider */}
             <div className="flex items-center gap-3 py-1">
               <div className="flex-1 h-px bg-ink-800" />
+
               <span className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">
                 OR
               </span>
+
               <div className="flex-1 h-px bg-ink-800" />
             </div>
 
-            {/* Google Signup */}
+            {/* Google Signup — UNCHANGED */}
             <motion.button
-              whileHover={{ scale: 1.01, borderColor: '#4A5568' }}
+              whileHover={{
+                scale: 1.01,
+                borderColor: '#4A5568',
+              }}
               whileTap={{ scale: 0.99 }}
               type="button"
               onClick={handleGoogleSignUp}
@@ -359,11 +514,15 @@ export default function Signup() {
               {googleLoading ? (
                 <>
                   <span className="w-4 h-4 rounded-full border-2 border-signal border-t-transparent animate-spin" />
-                  <span className="font-mono text-xs">Authorizing with Google…</span>
+
+                  <span className="font-mono text-xs">
+                    Authorizing with Google…
+                  </span>
                 </>
               ) : (
                 <>
                   <GoogleIcon className="w-4 h-4 group-hover:scale-110 transition-transform duration-200" />
+
                   <span>Sign up with Google</span>
                 </>
               )}
@@ -371,7 +530,6 @@ export default function Signup() {
           </form>
         </motion.div>
 
-        {/* Login Link */}
         <p className="text-center text-xs text-ink-400 mt-5">
           Already have an account?{' '}
           <Link
